@@ -1,0 +1,10 @@
+{
+  "venvPath": "./backend",
+  "venv": "venv",
+  "pythonVersion": "3.11",
+  "analysis": {
+    "autoImportCompletions": true,
+    "useLibraryCodeForTypes": true,
+    "diagnosticMode": "workspace"
+  }
+}
