@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from functools import lru_cache
 from typing import Optional
 import os
@@ -8,6 +8,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Settings(BaseModel):
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="allow"
+    )
+    
     # API Configuration
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "AuthISM"
@@ -31,9 +37,9 @@ class Settings(BaseModel):
         "Tu réponds toujours en français de manière claire et concise."
     )
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = 'utf-8'
+    # MongoDB Configuration
+    MONGODB_URL: str = Field(default="mongodb://localhost:27017")
+    DATABASE_NAME: str = Field(default="authism")
 
 @lru_cache()
 def get_settings():

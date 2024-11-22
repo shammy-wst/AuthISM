@@ -8,18 +8,18 @@ app = FastAPI(title="AuthISM API")
 # Configuration CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Routes
-app.include_router(chat.router, prefix=settings.API_V1_STR + "/chat", tags=["chat"])
+app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 
 @app.get("/")
 async def root():
-    return {"message": "Bienvenue sur l'API AuthISM"}
+    return {"message": "AuthISM API is running"}
 
 if __name__ == "__main__":
     import uvicorn

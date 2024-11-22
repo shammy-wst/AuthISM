@@ -1,25 +1,30 @@
-from pydantic import BaseModel
-from typing import Optional, List, Dict
+from pydantic import BaseModel, Field, ConfigDict
+from typing import List, Optional
 from datetime import datetime
+from enum import Enum
+
+class MessageRole(str, Enum):
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
 
 class Message(BaseModel):
+    role: MessageRole
     content: str
-    role: str = "user"
-    timestamp: datetime = datetime.now()
+    timestamp: datetime = Field(default_factory=datetime.now)
 
-class ChatSession(BaseModel):
-    id: Optional[str] = None
-    title: str
-    pdf_context: Optional[str] = None
-    messages: List[Message] = []
-    created_at: datetime = datetime.now()
-    updated_at: datetime = datetime.now()
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+class ChatMessage(BaseModel):
+    content: str
 
 class ChatResponse(BaseModel):
-    message: str
-    sources: Optional[List[Dict[str, str]]] = None
+    response: str
+    
+class Conversation(BaseModel):
+    id: str
+    messages: List[Message] = []
+    created_at: datetime = Field(default_factory=datetime.now)
+    title: Optional[str] = None 
 
-class PDFUpload(BaseModel):
-    filename: str
-    file_url: str
-    uploaded_at: datetime = datetime.now() 
+    model_config = ConfigDict(arbitrary_types_allowed=True) 

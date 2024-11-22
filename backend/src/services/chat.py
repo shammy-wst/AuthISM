@@ -1,69 +1,76 @@
-from langchain.llms import Ollama
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.embeddings import OllamaEmbeddings
-from langchain.vectorstores import Chroma
-from langchain.chains import ConversationalRetrievalChain
-from config.settings import settings
-from typing import List, Dict, Optional
+from typing import List, Optional, AsyncGenerator
+from models.schemas import Message, Conversation, MessageRole
+from services.llm_service import LLMService
+import uuid
+from datetime import datetime
 
 class ChatService:
     def __init__(self):
-        self.llm = Ollama(
-            base_url=settings.OLLAMA_BASE_URL,
-            model=settings.MODEL_NAME,
-            temperature=settings.TEMPERATURE
+        self.conversations: dict[str, Conversation] = {}
+        self.llm_service = LLMService()
+    
+    def create_conversation(self, title: Optional[str] = None) -> Conversation:
+        """Crée une nouvelle conversation"""
+        conversation_id = str(uuid.uuid4())
+        conversation = Conversation(
+            id=conversation_id,
+            title=title or f"Conversation {len(self.conversations) + 1}"
         )
-        self.embeddings = OllamaEmbeddings(
-            base_url=settings.OLLAMA_BASE_URL,
-            model=settings.MODEL_NAME
-        )
+        self.conversations[conversation_id] = conversation
+        return conversation
+    
+    def get_conversation(self, conversation_id: str) -> Optional[Conversation]:
+        """Récupère une conversation par son ID"""
+        return self.conversations.get(conversation_id)
+    
+    def add_message(self, conversation_id: str, content: str, role: MessageRole) -> Message:
+        """Ajoute un message à une conversation"""
+        conversation = self.conversations.get(conversation_id)
+        if not conversation:
+            raise ValueError(f"Conversation {conversation_id} not found")
         
-    async def chat_without_rag(self, message: str, history: List[Dict] = None) -> str:
-        """Simple chat without RAG"""
-        if history:
-            context = "\n".join([f"{m['role']}: {m['content']}" for m in history])
-            prompt = f"{context}\nUser: {message}\nAssistant:"
-        else:
-            prompt = f"User: {message}\nAssistant:"
-            
-        response = self.llm.predict(prompt)
-        return response
-
-    async def create_vector_store(self, text: str) -> Chroma:
-        """Create a vector store from text"""
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200
-        )
-        texts = text_splitter.split_text(text)
+        message = Message(role=role, content=content)
+        conversation.messages.append(message)
+        return message
+    
+    async def generate_response(self, conversation_id: str) -> str:
+        """Génère une réponse pour la conversation"""
+        conversation = self.get_conversation(conversation_id)
+        if not conversation:
+            raise ValueError(f"Conversation {conversation_id} not found")
         
-        vectorstore = Chroma.from_texts(
-            texts=texts,
-            embedding=self.embeddings
-        )
-        return vectorstore
-
-    async def chat_with_rag(
-        self,
-        message: str,
-        vectorstore: Chroma,
-        history: List[Dict] = None
-    ) -> tuple[str, List[Dict]]:
-        """Chat with RAG"""
-        qa_chain = ConversationalRetrievalChain.from_llm(
-            llm=self.llm,
-            retriever=vectorstore.as_retriever(),
-            return_source_documents=True
-        )
-        
-        result = qa_chain({"question": message, "chat_history": history or []})
-        
-        sources = [
-            {
-                "content": doc.page_content,
-                "metadata": doc.metadata
-            }
-            for doc in result["source_documents"]
+        # Formater l'historique pour le LLM
+        formatted_messages = [
+            {"role": msg.role, "content": msg.content}
+            for msg in conversation.messages
         ]
         
-        return result["answer"], sources 
+        # Obtenir la réponse du LLM
+        prompt = self.llm_service.format_chat_prompt(formatted_messages)
+        response = await self.llm_service.generate_response(prompt)
+        
+        # Ajouter la réponse à la conversation
+        self.add_message(conversation_id, response, MessageRole.ASSISTANT)
+        return response
+    
+    async def generate_stream(self, conversation_id: str) -> AsyncGenerator[str, None]:
+        """Génère une réponse en streaming"""
+        conversation = self.get_conversation(conversation_id)
+        if not conversation:
+            raise ValueError(f"Conversation {conversation_id} not found")
+        
+        formatted_messages = [
+            {"role": msg.role, "content": msg.content}
+            for msg in conversation.messages
+        ]
+        
+        prompt = self.llm_service.format_chat_prompt(formatted_messages)
+        response_chunks = []
+        
+        async for chunk in self.llm_service.generate_stream(prompt):
+            response_chunks.append(chunk)
+            yield chunk
+        
+        # Une fois le streaming terminé, ajouter le message complet à la conversation
+        complete_response = "".join(response_chunks)
+        self.add_message(conversation_id, complete_response, MessageRole.ASSISTANT)
